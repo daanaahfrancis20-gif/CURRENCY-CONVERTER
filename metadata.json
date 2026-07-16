@@ -1,0 +1,6 @@
+{
+  "name": "Global Currency Converter",
+  "description": "A modern, ultra-responsive currency converter with multiple themes, flag icons, swap animations, and a mathematical calculation breakdown.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
