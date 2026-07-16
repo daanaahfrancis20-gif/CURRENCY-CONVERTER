@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, ChevronDown } from 'lucide-react';
 import { getCurrencyInfo, CurrencyInfo } from '../data/currencies';
 import { ThemeConfig } from '../types';
@@ -22,8 +22,11 @@ export default function CurrencyDropdown({
 }: CurrencyDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const listContainerRef = useRef<HTMLDivElement>(null);
 
   const selectedInfo = useMemo(() => getCurrencyInfo(selectedCode), [selectedCode]);
 
@@ -43,6 +46,37 @@ export default function CurrencyDropdown({
       });
   }, [availableCodes, searchQuery]);
 
+  // Reset activeIndex when filtered list changes
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [filteredCurrencies]);
+
+  // AUTO-RECOGNITION & AUTO-SELECTION when typing:
+  // Detects if the typed search query uniquely matches a currency name/code, or exactly matches a 3-letter currency code.
+  useEffect(() => {
+    const query = searchQuery.trim().toUpperCase();
+    if (!query) return;
+
+    // 1. If it's an exact 3-letter currency code match (e.g. typing "USD")
+    if (query.length === 3) {
+      const matched = availableCodes.find(code => code.toUpperCase() === query);
+      if (matched) {
+        onChange(matched);
+        setIsOpen(false);
+        setSearchQuery('');
+        return;
+      }
+    }
+
+    // 2. If there's exactly one match in the filtered list and the user typed 3 or more characters (e.g. typing "Japan" -> JPY)
+    if (searchQuery.trim().length >= 3 && filteredCurrencies.length === 1) {
+      const matched = filteredCurrencies[0];
+      onChange(matched.code);
+      setIsOpen(false);
+      setSearchQuery('');
+    }
+  }, [searchQuery, filteredCurrencies, availableCodes, onChange]);
+
   // Click outside handler
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -60,6 +94,50 @@ export default function CurrencyDropdown({
       searchInputRef.current.focus();
     }
   }, [isOpen]);
+
+  // Keyboard Navigation handler
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (filteredCurrencies.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex(prev => (prev + 1) % filteredCurrencies.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex(prev => (prev - 1 + filteredCurrencies.length) % filteredCurrencies.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const currentSelection = filteredCurrencies[activeIndex];
+      if (currentSelection) {
+        onChange(currentSelection.code);
+        setIsOpen(false);
+        setSearchQuery('');
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsOpen(false);
+    }
+  };
+
+  // Ensure active index option is visible in scroll container
+  useEffect(() => {
+    if (isOpen && listContainerRef.current) {
+      const activeEl = listContainerRef.current.querySelector(`[data-index="${activeIndex}"]`) as HTMLElement;
+      if (activeEl) {
+        const container = listContainerRef.current;
+        const activeTop = activeEl.offsetTop;
+        const activeBottom = activeTop + activeEl.offsetHeight;
+        const containerTop = container.scrollTop;
+        const containerBottom = containerTop + container.clientHeight;
+
+        if (activeTop < containerTop) {
+          container.scrollTop = activeTop;
+        } else if (activeBottom > containerBottom) {
+          container.scrollTop = activeBottom - container.clientHeight;
+        }
+      }
+    }
+  }, [activeIndex, isOpen]);
 
   // Determine dropdown styling based on theme
   const listBgClass = useMemo(() => {
@@ -153,20 +231,27 @@ export default function CurrencyDropdown({
               id={`${idPrefix}-search-input`}
               ref={searchInputRef}
               type="text"
-              placeholder="Search currency code or name..."
+              placeholder="Start typing currency or country name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
               className="w-full bg-transparent border-0 outline-none py-1.5 text-sm placeholder:opacity-50"
             />
           </div>
 
           {/* Currency Items */}
-          <div className="overflow-y-auto max-h-60 custom-scrollbar divide-y divide-inherit">
+          <div 
+            ref={listContainerRef}
+            className="overflow-y-auto max-h-60 custom-scrollbar divide-y divide-inherit"
+          >
             {filteredCurrencies.length > 0 ? (
-              filteredCurrencies.map((curr) => {
+              filteredCurrencies.map((curr, idx) => {
                 const isSelected = curr.code === selectedCode;
+                const isHighlighted = idx === activeIndex;
+                
                 return (
                   <button
+                    data-index={idx}
                     id={`${idPrefix}-option-${curr.code.toLowerCase()}`}
                     key={curr.code}
                     type="button"
@@ -176,7 +261,7 @@ export default function CurrencyDropdown({
                       setSearchQuery('');
                     }}
                     className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors duration-150 ${
-                      isSelected ? activeItemClass : itemHoverClass
+                      isHighlighted || isSelected ? activeItemClass : itemHoverClass
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -193,9 +278,9 @@ export default function CurrencyDropdown({
                         <span className="text-xs opacity-75">{curr.name}</span>
                       </div>
                     </div>
-                    {isSelected && (
+                    {(isSelected || isHighlighted) && (
                       <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-current/10">
-                        Selected
+                        {isSelected ? 'Selected' : 'Press Enter'}
                       </span>
                     )}
                   </button>
