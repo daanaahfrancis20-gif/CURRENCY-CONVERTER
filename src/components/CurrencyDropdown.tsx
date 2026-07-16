@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, ChevronDown } from 'lucide-react';
-import { getCurrencyInfo, CurrencyInfo } from '../data/currencies';
+import { getCurrencyInfo, CurrencyInfo, countryToCurrencyMap } from '../data/currencies';
 import { ThemeConfig } from '../types';
 
 interface CurrencyDropdownProps {
@@ -34,14 +34,25 @@ export default function CurrencyDropdown({
   const filteredCurrencies = useMemo(() => {
     // Standardize searchable array
     const searchLower = searchQuery.toLowerCase().trim();
+    if (!searchLower) {
+      return availableCodes.map(code => getCurrencyInfo(code));
+    }
+
+    // Find all currency codes that have country names/aliases matching searchLower
+    const matchingCodesByCountry = new Set<string>();
+    for (const [countryName, code] of Object.entries(countryToCurrencyMap)) {
+      if (countryName.includes(searchLower)) {
+        matchingCodesByCountry.add(code.toUpperCase());
+      }
+    }
     
     return availableCodes
       .map(code => getCurrencyInfo(code))
       .filter(curr => {
-        if (!searchLower) return true;
         return (
           curr.code.toLowerCase().includes(searchLower) ||
-          curr.name.toLowerCase().includes(searchLower)
+          curr.name.toLowerCase().includes(searchLower) ||
+          matchingCodesByCountry.has(curr.code.toUpperCase())
         );
       });
   }, [availableCodes, searchQuery]);
@@ -52,14 +63,14 @@ export default function CurrencyDropdown({
   }, [filteredCurrencies]);
 
   // AUTO-RECOGNITION & AUTO-SELECTION when typing:
-  // Detects if the typed search query uniquely matches a currency name/code, or exactly matches a 3-letter currency code.
   useEffect(() => {
-    const query = searchQuery.trim().toUpperCase();
-    if (!query) return;
+    const queryLower = searchQuery.trim().toLowerCase();
+    if (!queryLower) return;
 
-    // 1. If it's an exact 3-letter currency code match (e.g. typing "USD")
-    if (query.length === 3) {
-      const matched = availableCodes.find(code => code.toUpperCase() === query);
+    // 1. Check for an exact country name/alias match in our countryToCurrencyMap (e.g. typing "germany" -> EUR)
+    const exactCountryCode = countryToCurrencyMap[queryLower];
+    if (exactCountryCode) {
+      const matched = availableCodes.find(code => code.toUpperCase() === exactCountryCode.toUpperCase());
       if (matched) {
         onChange(matched);
         setIsOpen(false);
@@ -68,8 +79,19 @@ export default function CurrencyDropdown({
       }
     }
 
-    // 2. If there's exactly one match in the filtered list and the user typed 3 or more characters (e.g. typing "Japan" -> JPY)
-    if (searchQuery.trim().length >= 3 && filteredCurrencies.length === 1) {
+    // 2. If it's an exact 3-letter currency code match (e.g. typing "USD")
+    if (queryLower.length === 3) {
+      const matched = availableCodes.find(code => code.toLowerCase() === queryLower);
+      if (matched) {
+        onChange(matched);
+        setIsOpen(false);
+        setSearchQuery('');
+        return;
+      }
+    }
+
+    // 3. If there's exactly one match in the filtered list and the user typed 3 or more characters (e.g. typing "Japan" -> JPY)
+    if (queryLower.length >= 3 && filteredCurrencies.length === 1) {
       const matched = filteredCurrencies[0];
       onChange(matched.code);
       setIsOpen(false);
